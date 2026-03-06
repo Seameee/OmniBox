@@ -832,14 +832,14 @@ export function getMainPageTemplate(): string {
         <button type="submit" class="btn">开始代理访问</button>
       </form>
 
-      <div class="stats-bar">
+      <div class="stats-bar" id="statsBar">
         <div class="stat-item">
-          <div class="stat-value">99.9%</div>
-          <div class="stat-label">服务可用率</div>
+          <div class="stat-value" id="statTotalKeys">—</div>
+          <div class="stat-label">缓存条目数</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">&lt;100ms</div>
-          <div class="stat-label">平均响应时间</div>
+          <div class="stat-value" id="statHitRate">—</div>
+          <div class="stat-label">缓存命中率</div>
         </div>
         <div class="stat-item">
           <div class="stat-value">全球</div>
@@ -946,6 +946,22 @@ export function getMainPageTemplate(): string {
     const style = document.createElement('style');
     style.textContent = '@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
     document.head.appendChild(style);
+
+    // 动态拉取缓存统计数据，替换假数据
+    async function loadCacheStats() {
+      try {
+        const res = await fetch('/api/cache/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        const totalKeysEl = document.getElementById('statTotalKeys');
+        const hitRateEl = document.getElementById('statHitRate');
+        if (totalKeysEl) totalKeysEl.textContent = data.error ? '—' : String(data.totalKeys ?? '—');
+        if (hitRateEl) hitRateEl.textContent = data.error ? '—' : (data.hitRate ?? '—');
+      } catch (_) {
+        // 接口不可用时保持 "—" 占位，不影响页面功能
+      }
+    }
+    document.addEventListener('DOMContentLoaded', loadCacheStats);
   </script>
 </body>
 </html>
@@ -1016,7 +1032,7 @@ export function getPasswordPageTemplate(passwordCookieName: string): string {
 
     let isSubmitting = false;
     
-    function submitPassword(event) {
+    async function submitPassword(event) {
       event.preventDefault();
       
       if (isSubmitting) return;
@@ -1037,13 +1053,21 @@ export function getPasswordPageTemplate(passwordCookieName: string): string {
       errorMessage.style.display = 'none';
       
       try {
+        // 客户端对密码做 SHA-256 哈希后再存入 Cookie，避免明文密码暴露
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+
         const cookieDomain = window.location.hostname;
         const oneWeekLater = new Date();
         oneWeekLater.setTime(oneWeekLater.getTime() + (7 * 24 * 60 * 60 * 1000));
         
         document.cookie = "${passwordCookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=" + cookieDomain;
         
-        document.cookie = "${passwordCookieName}=" + encodeURIComponent(password) + 
+        document.cookie = "${passwordCookieName}=" + hashHex + 
           "; expires=" + oneWeekLater.toUTCString() + 
           "; path=/; domain=" + cookieDomain + "; SameSite=Lax; Secure";
         

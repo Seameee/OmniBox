@@ -65,11 +65,13 @@ export class ContentInjector {
 
   replaceURLsInText(content: string): string {
     try {
-      const urlRegex = /(https?:\/\/[^\s'"]+)/g;
+      // 排除尾部标点符号（逗号、句号、括号、引号等），避免将非 URL 字符包含进改写结果
+      const urlRegex = /(https?:\/\/[^\s'"<>()\[\]{}|\\^`]+?)(?=[\s'"<>()\[\]{}|\\^`.,;:!?]|$)/g;
 
       return content.replaceAll(urlRegex, (match, p1, offset, string) => {
         const before = string.substring(Math.max(0, offset - 10), offset);
-        if (before.includes('src="') || before.includes('href="')) {
+        if (before.includes('src="') || before.includes('href="') ||
+            before.includes("src='") || before.includes("href='")) {
           return match;
         }
         return `${(globalThis as any).thisProxyServerUrlHttps}${match}`;
@@ -236,7 +238,7 @@ function changeURL(relativePath) {
       return relativePath;
     }
   } catch {
-    console.log("Change URL Error:", relativePath, typeof relativePath);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Change URL Error:", relativePath, typeof relativePath);
     return relativePath;
   }
 
@@ -279,7 +281,7 @@ function changeURL(relativePath) {
     
     return absolutePath;
   } catch (e) {
-    console.log("Exception occurred: " + e.message + " " + original_website_url_str + " " + relativePath);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Exception occurred: " + e.message + " " + original_website_url_str + " " + relativePath);
     return relativePath;
   }
 }
@@ -298,9 +300,9 @@ function networkInject() {
   var originalFetch = window.fetch;
   
   XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-    console.log("XHR Original:", url);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("XHR Original:", url);
     url = changeURL(url);
-    console.log("XHR Rewritten:", url);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("XHR Rewritten:", url);
     return originalOpen.apply(this, arguments);
   };
 
@@ -315,7 +317,7 @@ function networkInject() {
     }
 
     url = changeURL(url);
-    console.log("Fetch Rewritten:", url);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Fetch Rewritten:", url);
     
     if (typeof input === 'string') {
       return originalFetch(url, init);
@@ -325,7 +327,7 @@ function networkInject() {
     }
   };
   
-  console.log("Network request methods injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Network request methods injected");
 }
 
 // Window.open injection
@@ -335,7 +337,7 @@ function windowOpenInject() {
     let modifiedUrl = changeURL(url);
     return originalOpen.call(window, modifiedUrl, name, specs);
   };
-  console.log("Window.open injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Window.open injected");
 }
 
 // DOM appendChild injection
@@ -350,7 +352,7 @@ function appendChildInject() {
     }
     return originalAppendChild.call(this, child);
   };
-  console.log("appendChild injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("appendChild injected");
 }
 
 // Element property injection
@@ -385,7 +387,7 @@ function elementPropertyInject() {
     configurable: true
   });
 
-  console.log("Element properties injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Element properties injected");
 }
 
 // Location object proxy
@@ -482,7 +484,8 @@ class ProxyLocation {
   }
 
   toString() {
-    return this.originalLocation.href;
+    // 返回原始站点 URL，与 get href() 保持一致，避免字符串拼接泄露代理域名
+    return original_website_url_str;
   }
 }
 
@@ -505,7 +508,7 @@ function documentLocationInject() {
       window.location.href = changeURL(url);
     }
   });
-  console.log("Document location injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Document location injected");
 }
 
 // Window location injection
@@ -518,7 +521,7 @@ function windowLocationInject() {
       window.location.href = changeURL(url);
     }
   });
-  console.log("Window location injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Window location injected");
 }
 
 // History API injection
@@ -563,7 +566,7 @@ function historyInject() {
     return originalReplaceState.apply(this, [state, title, u]);
   };
 
-  console.log("History API injected");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("History API injected");
 }
 
 // DOM observer for dynamic content with performance optimization
@@ -598,7 +601,7 @@ function obsPage() {
     attributeFilter: ['src', 'href', 'action', 'srcset', 'poster', 'data']
   };
   proxyObserver.observe(document.body, config);
-  console.log("DOM observer started with debounce optimization");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("DOM observer started with debounce optimization");
 }
 
 function traverseAndConvert(node) {
@@ -621,7 +624,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("href", absolutePath);
     } catch (e) {
-      console.log("Exception converting href:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting href:", e.message);
     }
   }
 
@@ -631,7 +634,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("src", absolutePath);
     } catch (e) {
-      console.log("Exception converting src:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting src:", e.message);
     }
   }
 
@@ -641,7 +644,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("action", absolutePath);
     } catch (e) {
-      console.log("Exception converting action:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting action:", e.message);
     }
   }
 
@@ -651,7 +654,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("srcset", absolutePath);
     } catch (e) {
-      console.log("Exception converting srcset:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting srcset:", e.message);
     }
   }
 
@@ -661,7 +664,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("poster", absolutePath);
     } catch (e) {
-      console.log("Exception converting poster:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting poster:", e.message);
     }
   }
 
@@ -671,7 +674,7 @@ function convertToAbs(element) {
       const absolutePath = changeURL(relativePath);
       element.setAttribute("data", absolutePath);
     } catch (e) {
-      console.log("Exception converting data:", e.message);
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Exception converting data:", e.message);
     }
   }
 }
@@ -687,15 +690,29 @@ function loopAndConvertToAbs() {
     removeIntegrityAttributesFromElement(ele);
     convertToAbs(ele);
   }
-  console.log("Converted all existing elements");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Converted all existing elements");
 }
 
-function convertScripts() {
-  var scripts = document.getElementsByTagName('script');
-  for (var i = 0; i < scripts.length; i++) {
-    convertToAbs(scripts[i]);
-  }
-  setTimeout(convertScripts, 3000);
+// 用 MutationObserver 监听 script 插入，替代无限递归的 setTimeout 轮询，避免内存泄漏
+function watchNewScripts() {
+  var scriptWatcher = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) {
+          var el = node;
+          if (el.tagName === 'SCRIPT') {
+            convertToAbs(el);
+          }
+          // 也检查新插入节点内的 script 子元素
+          if (el.querySelectorAll) {
+            el.querySelectorAll('script').forEach(function(s) { convertToAbs(s); });
+          }
+        }
+      });
+    });
+  });
+  scriptWatcher.observe(document.documentElement, { childList: true, subtree: true });
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Script watcher started");
 }
 
 // Execute all injections
@@ -710,19 +727,19 @@ historyInject();
 // Setup load event handlers
 window.addEventListener('load', () => {
   loopAndConvertToAbs();
-  console.log("Converting script paths");
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Converting script paths");
   obsPage();
-  convertScripts();
+  watchNewScripts();
 });
-console.log("Window load event handler added");
+if (window.DEBUG_OMNIBOX_MODE) console.log("Window load event handler added");
 
 // Setup error event handlers
 window.addEventListener('error', event => {
   var element = event.target || event.srcElement;
   if (element.tagName === 'SCRIPT') {
-    console.log("Found problematic script:", element);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Found problematic script:", element);
     if (element.alreadyChanged) {
-      console.log("Script already injected, ignoring...");
+      if (window.DEBUG_OMNIBOX_MODE) console.log("Script already injected, ignoring...");
       return;
     }
 
@@ -736,10 +753,10 @@ window.addEventListener('error', event => {
     newScript.alreadyChanged = true;
 
     document.head.appendChild(newScript);
-    console.log("New script added:", newScript);
+    if (window.DEBUG_OMNIBOX_MODE) console.log("New script added:", newScript);
   }
 }, true);
-console.log("Error event handler added");
+if (window.DEBUG_OMNIBOX_MODE) console.log("Error event handler added");
 `;
   }
 

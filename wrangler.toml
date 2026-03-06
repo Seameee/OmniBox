@@ -20,6 +20,10 @@ LOG_LEVEL = "warn"
 # 是否显示密码输入页面：true(显示)/false(直接返回403)
 SHOW_PASSWORD_PAGE = "true"
 
+# 爬虫黑名单（逗号分隔的 UA 关键词，默认已包含 Bytespider/GPTBot/CCBot/SemrushBot/AhrefsBot）
+# 如需追加，填写如：BLOCKED_UA_PATTERNS = "MyBot,AnotherBot"
+BLOCKED_UA_PATTERNS = ""
+
 # ==================== 缓存 TTL 配置（单位：秒）====================
 # HTML 内容缓存时间（1小时）
 CACHE_HTML_TTL = "3600"

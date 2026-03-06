@@ -4,7 +4,7 @@
 import { ProxyHandler } from './proxy.js';
 import { CacheManager } from './cache.js';
 import { CONFIG, type EnvVariables } from './config.js';
-import { getUnrestrictedCorsHeaders, generateRequestId, Logger, getHTMLResponse, createJsonHeaders } from './utils.js';
+import { getUnrestrictedCorsHeaders, generateRequestId, Logger, getHTMLResponse, createJsonHeaders, constantTimeEqual } from './utils.js';
 import { getErrorPageTemplate } from './templates.js';
 
 declare global {
@@ -48,7 +48,7 @@ interface CacheClearResponse {
   error?: string;
 }
 
-function getCacheKey(cacheManager: CacheManager, request: Request): string {
+async function getCacheKey(cacheManager: CacheManager, request: Request): Promise<string> {
   return cacheManager.generateCacheKey(
     request.url,
     request.method,
@@ -82,7 +82,7 @@ async function handleRequest(request: Request, env: EnvVariables): Promise<Respo
   }
 
   if (request.method === 'GET' && cacheManager) {
-    const cacheKey = getCacheKey(cacheManager, request);
+    const cacheKey = await getCacheKey(cacheManager, request);
 
     const cached = await cacheManager.get(cacheKey);
     if (cached) {
@@ -119,7 +119,7 @@ async function handleRequest(request: Request, env: EnvVariables): Promise<Respo
   if (request.method === 'GET' && cacheManager &&
       originalResponse.status >= 200 && originalResponse.status < 300) {
     const responseForCache = finalResponse.clone();
-    const cacheKey = getCacheKey(cacheManager, request);
+    const cacheKey = await getCacheKey(cacheManager, request);
 
     cacheManager.set(cacheKey, responseForCache).catch(err => {
       logger.error('Failed to cache response', { cacheKey, error: String(err) });
@@ -136,6 +136,26 @@ async function handleApiRequest(
   cacheManager: CacheManager | null
 ): Promise<Response> {
   const headers = createJsonHeaders();
+
+  // 写操作（POST）需要鉴权：使用 PROXY_PASSWORD 作为 Bearer Token
+  // GET 类读接口（health/status/stats）保持公开，便于监控系统访问
+  const isMutationEndpoint = request.method === 'POST' &&
+    (url.pathname === '/api/cache/clear' || url.pathname === '/api/cache/preload');
+
+  if (isMutationEndpoint) {
+    const expectedPassword = env.PROXY_PASSWORD || CONFIG.DEFAULT_PASSWORD;
+    if (expectedPassword) {
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      // 使用常量时间比较防止时序攻击
+      if (!constantTimeEqual(token, expectedPassword)) {
+        return new Response(JSON.stringify({ error: 'Unauthorized', message: '需要有效的 Authorization: Bearer <password> 头' }), {
+          status: 401,
+          headers
+        });
+      }
+    }
+  }
 
   if (url.pathname === '/api/health') {
     const healthResponse: HealthCheckResponse = {
@@ -209,6 +229,15 @@ async function handleApiRequest(
     return handlePreloadRequest(cacheManager);
   }
 
+  if (url.pathname === '/api/cache/stats' && request.method === 'GET') {
+    if (cacheManager) {
+      const stats = await cacheManager.getStats();
+      return new Response(JSON.stringify(stats), { headers });
+    } else {
+      return new Response(JSON.stringify({ error: 'Cache not configured' }), { status: 400, headers });
+    }
+  }
+
   const notFoundResponse = {
     error: 'API endpoint not found'
   };
@@ -217,6 +246,8 @@ async function handleApiRequest(
     headers
   });
 }
+
+// constantTimeEqual imported from utils.js
 
 async function handlePreloadRequest(cacheManager: CacheManager | null): Promise<Response> {
   const headers = createJsonHeaders();
