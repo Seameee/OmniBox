@@ -661,6 +661,7 @@ export function getMainPageTemplate() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OmniBox - 网络代理服务</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
   <meta name="description" content="OmniBox - 安全、快速、现代化的网络代理服务">
   <meta name="keywords" content="proxy, web proxy, cloudflare worker, omnibox, secure browsing, 网络代理">
   <style>
@@ -832,6 +833,7 @@ export function getPasswordPageTemplate(passwordCookieName) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>访问认证 - OmniBox</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
   <meta name="description" content="安全访问 OmniBox 代理服务">
   <style>
     ${commonStyles}
@@ -979,6 +981,7 @@ export function getErrorPageTemplate(errorTitle, errorMessage, statusCode = 500)
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${errorTitle} - OmniBox</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
   <style>
     ${commonStyles}
     .error-icon {
