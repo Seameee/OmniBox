@@ -47,12 +47,13 @@
 
 ### 技术亮点
 
-- **零依赖** - 纯 JavaScript 实现，核心功能无需外部依赖
+- **TypeScript 重构** - 完整的 TypeScript 类型支持，提升代码质量和开发体验
+- **零依赖** - 纯 TypeScript 实现，核心功能无需外部依赖
 - **模块化设计** - 清晰的代码架构，易于维护和扩展
 - **CORS 支持** - 完整的跨域资源共享支持
 - **性能优化** - 智能缓存策略，减少源站请求
 - **安全防护** - 爬虫过滤、内容过滤、速率限制
-- **代码质量** - 集成 ESLint 和 TypeScript 类型检查
+- **代码质量** - 集成 ESLint 和 TypeScript 严格类型检查
 - **现代化前端** - 响应式设计，流畅的用户体验
 
 ---
@@ -65,19 +66,19 @@
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │   worker.js  │───▶│  proxy.js    │───▶│  injector.js │  │
+│  │  worker.ts   │───▶│  proxy.ts    │───▶│ injector.ts  │  │
 │  │   (入口)     │    │  (代理处理)   │    │  (内容注入)   │  │
 │  └──────────────┘    └──────────────┘    └──────────────┘  │
 │         │                   │                    │          │
 │         ▼                   ▼                    ▼          │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │  cache.js    │    │  config.js   │    │ templates.js │  │
+│  │  cache.ts    │    │  config.ts   │    │templates.ts  │  │
 │  │  (缓存管理)   │    │  (配置中心)   │    │  (页面模板)   │  │
 │  └──────────────┘    └──────────────┘    └──────────────┘  │
 │         │                                        │          │
 │         ▼                                        ▼          │
 │  ┌──────────────┐                        ┌──────────────┐  │
-│  │   utils.js   │                        │  KV Storage  │  │
+│  │   utils.ts   │                        │  KV Storage  │  │
 │  │  (工具函数)   │                        │  (持久化缓存) │  │
 │  └──────────────┘                        └──────────────┘  │
 │                                                              │
@@ -88,13 +89,13 @@
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| 入口模块 | `worker.js` | 请求路由、错误处理、缓存检查 |
-| 代理处理 | `proxy.js` | URL 提取、请求转发、响应处理 |
-| 内容注入 | `injector.js` | HTML 注入、URL 重写、脚本注入 |
-| 缓存管理 | `cache.js` | KV 存储操作、TTL 管理、缓存清理 |
-| 配置中心 | `config.js` | 全局配置、环境变量、功能开关 |
-| 页面模板 | `templates.js` | 主页、密码页、错误页模板 |
-| 工具函数 | `utils.js` | 通用工具、Cookie 处理、响应构建 |
+| 入口模块 | `worker.ts` | 请求路由、错误处理、缓存检查 |
+| 代理处理 | `proxy.ts` | URL 提取、请求转发、响应处理 |
+| 内容注入 | `injector.ts` | HTML 注入、URL 重写、脚本注入 |
+| 缓存管理 | `cache.ts` | KV 存储操作、TTL 管理、缓存清理 |
+| 配置中心 | `config.ts` | 全局配置、环境变量、功能开关 |
+| 页面模板 | `templates.ts` | 主页、密码页、错误页模板 |
+| 工具函数 | `utils.ts` | 通用工具、Cookie 处理、响应构建 |
 
 ---
 
@@ -178,7 +179,7 @@ https://your-worker.workers.dev/https://github.com
 
 ```toml
 name = "omnibox"
-main = "src/worker.js"
+main = "src/worker.ts"
 compatibility_date = "2024-12-19"
 compatibility_flags = ["nodejs_compat"]
 
@@ -315,13 +316,13 @@ omnibox/
 │   └── workflows/
 │       └── deploy.yml          # CI/CD 配置
 ├── src/
-│   ├── worker.js               # 主入口
-│   ├── config.js               # 配置模块
-│   ├── proxy.js                # 代理处理
-│   ├── cache.js                # 缓存管理
-│   ├── injector.js             # 内容注入
-│   ├── templates.js            # 页面模板
-│   └── utils.js                # 工具函数
+│   ├── worker.ts               # 主入口
+│   ├── config.ts               # 配置模块
+│   ├── proxy.ts                # 代理处理
+│   ├── cache.ts                # 缓存管理
+│   ├── injector.ts             # 内容注入
+│   ├── templates.ts            # 页面模板
+│   └── utils.ts                # 工具函数
 ├── .eslintrc.js               # ESLint 配置
 ├── .gitignore
 ├── package.json
@@ -421,7 +422,7 @@ curl -X POST https://your-worker.workers.dev/api/cache/clear
 <details>
 <summary><b>Q: 如何修改代理提示信息？</b></summary>
 
-编辑 `src/config.js` 中的 `PROXY_HINT_DELAY` 和提示文本，或修改 `src/injector.js` 中的 `generateProxyHintScript` 方法。
+编辑 `src/config.ts` 中的 `PROXY_HINT_DELAY` 和提示文本，或修改 `src/injector.ts` 中的 `generateProxyHintScript` 方法。
 </details>
 
 <details>
@@ -438,6 +439,14 @@ curl -X POST https://your-worker.workers.dev/api/cache/clear
 ## 📄 许可证
 
 本项目采用 [MIT License](LICENSE) 开源协议。
+
+---
+
+## 🙏 致谢
+
+本项目基于 [cf-proxy-ex](https://github.com/1234567Yang/cf-proxy-ex) 进行增强改造，感谢原作者的开源贡献。
+
+cf-proxy-ex 是一个基于 Cloudflare Workers 的超级代理项目，支持无服务器代理、DuckDuckGo 代理、GitHub 加速等功能。
 
 ---
 
