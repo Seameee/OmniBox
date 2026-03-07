@@ -22,7 +22,9 @@ export class ContentInjector {
         hasBom = true;
       }
 
-      const encodedBody = btoa(unescape(encodeURIComponent(body)));
+      const encoder = new TextEncoder();
+      const encodedBytes = encoder.encode(body);
+      const byteArrayStr = Array.from(encodedBytes).join(',');
 
       const injectionScript = `
 <!DOCTYPE html>
@@ -39,10 +41,10 @@ export class ContentInjector {
   // HTML path conversion functions
   ${this.htmlPathInject}
 
-  // Original body data (Base64 encoded for efficiency)
-  const originalBodyBase64Encoded = "${encodedBody}";
-  // UTF-8 safe decoding
-  const decodedBody = decodeURIComponent(escape(atob(originalBodyBase64Encoded)));
+  // Original body data (byte array encoded for reliability)
+  const originalBodyByteArray = "${byteArrayStr}";
+  const bytes = new Uint8Array(originalBodyByteArray.split(',').map(Number));
+  const decodedBody = new TextDecoder().decode(bytes);
 
   if (window.${CONFIG.DEBUG_MODE}) {
     console.log('%c' + 'Debug code start', 'color: blue; font-size: 15px;');
@@ -244,48 +246,52 @@ var original_website_host_with_schema = original_website_url_str.substring(0, or
 // URL conversion utilities
 function changeURL(relativePath) {
   if (relativePath == null) return null;
-  
+
+  var relativePath_str = "";
+  if (relativePath instanceof URL) {
+    relativePath_str = relativePath.href;
+  } else {
+    relativePath_str = relativePath.toString();
+  }
+
   try {
-    if (relativePath.startsWith("data:") || relativePath.startsWith("mailto:") || 
-        relativePath.startsWith("javascript:") || relativePath.startsWith("chrome") || 
-        relativePath.startsWith("edge")) {
-      return relativePath;
+    if (relativePath_str.startsWith("data:") || relativePath_str.startsWith("mailto:") || 
+        relativePath_str.startsWith("javascript:") || relativePath_str.startsWith("chrome") || 
+        relativePath_str.startsWith("edge")) {
+      return relativePath_str;
     }
   } catch {
-    if (window.DEBUG_OMNIBOX_MODE) console.log("Change URL Error:", relativePath, typeof relativePath);
-    return relativePath;
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Change URL Error:", relativePath_str, typeof relativePath_str);
+    return relativePath_str;
   }
 
   var pathAfterAdd = "";
-  if (relativePath.startsWith("blob:")) {
+  if (relativePath_str.startsWith("blob:")) {
     pathAfterAdd = "blob:";
-    relativePath = relativePath.substring("blob:".length);
+    relativePath_str = relativePath_str.substring("blob:".length);
   }
 
   try {
-    // Remove proxy URLs from relative path
-    if (relativePath.startsWith(proxy_host_with_schema)) {
-      relativePath = relativePath.substring(proxy_host_with_schema.length);
+    if (relativePath_str.startsWith(proxy_host_with_schema)) {
+      relativePath_str = relativePath_str.substring(proxy_host_with_schema.length);
     }
-    if (relativePath.startsWith(proxy_host + "/")) {
-      relativePath = relativePath.substring(proxy_host.length + 1);
+    if (relativePath_str.startsWith(proxy_host + "/")) {
+      relativePath_str = relativePath_str.substring(proxy_host.length + 1);
     }
-    if (relativePath.startsWith(proxy_host)) {
-      relativePath = relativePath.substring(proxy_host.length);
+    if (relativePath_str.startsWith(proxy_host)) {
+      relativePath_str = relativePath_str.substring(proxy_host.length);
     }
   } catch {
     // Ignore errors
   }
 
   try {
-    var absolutePath = new URL(relativePath, original_website_url_str).href;
+    var absolutePath = new URL(relativePath_str, original_website_url_str).href;
     
-    // Replace current location references
     absolutePath = absolutePath.replaceAll(window.location.href, original_website_url_str);
     absolutePath = absolutePath.replaceAll(encodeURI(window.location.href), encodeURI(original_website_url_str));
     absolutePath = absolutePath.replaceAll(encodeURIComponent(window.location.href), encodeURIComponent(original_website_url_str));
     
-    // Replace proxy host references
     absolutePath = absolutePath.replaceAll(proxy_host, original_website_host);
     absolutePath = absolutePath.replaceAll(encodeURI(proxy_host), encodeURI(original_website_host));
     absolutePath = absolutePath.replaceAll(encodeURIComponent(proxy_host), encodeURIComponent(original_website_host));
@@ -295,8 +301,8 @@ function changeURL(relativePath) {
     
     return absolutePath;
   } catch (e) {
-    if (window.DEBUG_OMNIBOX_MODE) console.log("Exception occurred: " + e.message + " " + original_website_url_str + " " + relativePath);
-    return relativePath;
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Exception occurred: " + e.message + " " + original_website_url_str + " " + relativePath_str);
+    return relativePath_str;
   }
 }
 
@@ -388,20 +394,46 @@ function elementPropertyInject() {
     return val;
   };
 
-  // Handle anchor href property
-  const descriptor = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'href');
-  Object.defineProperty(HTMLAnchorElement.prototype, 'href', {
-    get: function () {
-      const real = descriptor.get.call(this);
-      return getOriginalUrl(real);
-    },
-    set: function (val) {
-      descriptor.set.call(this, changeURL(val));
-    },
-    configurable: true
-  });
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Element properties (get/set attribute) injected");
 
-  if (window.DEBUG_OMNIBOX_MODE) console.log("Element properties injected");
+  var setList = [
+    [HTMLAnchorElement, "href"],
+    [HTMLScriptElement, "src"],
+    [HTMLImageElement, "src"],
+    [HTMLLinkElement, "href"],
+    [HTMLIFrameElement, "src"],
+    [HTMLVideoElement, "src"],
+    [HTMLAudioElement, "src"],
+    [HTMLSourceElement, "src"],
+    [HTMLObjectElement, "data"],
+    [HTMLFormElement, "action"],
+  ];
+
+  for (var i = 0; i < setList.length; i++) {
+    var whichElement = setList[i][0];
+    var whichProperty = setList[i][1];
+    
+    if (!whichElement || !whichElement.prototype) continue;
+    var descriptor = Object.getOwnPropertyDescriptor(whichElement.prototype, whichProperty);
+    if (!descriptor) continue;
+
+    (function(desc, elem) {
+      Object.defineProperty(elem.prototype, whichProperty, {
+        get: function () {
+          var real = desc.get.call(this);
+          return getOriginalUrl(real);
+        },
+        set: function (val) {
+          desc.set.call(this, changeURL(val));
+        },
+        configurable: true,
+      });
+    })(descriptor, whichElement);
+
+    if (window.DEBUG_OMNIBOX_MODE) console.log("Hooked " + whichElement.name + " " + whichProperty);
+  }
+
+  if (window.DEBUG_OMNIBOX_MODE) console.log("Element properties (src/href) injected");
 }
 
 // Location object proxy
