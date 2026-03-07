@@ -53,8 +53,8 @@
 - **模块化设计** - 清晰的代码架构，7个独立模块，职责分离，易于维护和扩展
 - **CORS 支持** - 完整的跨域资源共享支持，无限制 CORS 头
 - **性能优化** - 智能缓存策略，按内容类型 TTL，减少源站请求
-- **安全防护** - 爬虫过滤(Bytespider)、内容过滤、密码常量时间比较
-- **代码质量** - 集成 ESLint 9.x 和 TypeScript 5.9 严格类型检查
+- **安全防护** - 爬虫过滤(Bytespider/GPTBot/CCBot/SemrushBot/AhrefsBot)、内容过滤、密码常量时间比较
+- **代码质量** - 集成 ESLint 10.x 和 TypeScript 5.9 严格类型检查
 - **现代化前端** - 响应式设计，深色/浅色主题切换，流畅的用户体验
 - **完整日志系统** - 分级日志(error/warn/info/debug)，支持请求追踪
 
@@ -106,6 +106,19 @@
                 ↓           ↓           ↓           ↓
               API路由    Cookie验证   KV读取    URL重写/注入
 ```
+
+### 核心技术实现
+
+#### 1. Location 对象代理
+通过 `ProxyLocation` 类包装原始 location 对象，拦截 `href`、`protocol`、`host` 等属性访问，使代理页面中的 JavaScript 获取正确的 URL 信息。
+
+#### 2. 网络请求拦截
+- **XMLHttpRequest.open 重写** - 拦截 XHR 请求，自动转换 URL
+- **fetch 方法重写** - 拦截 Fetch API 请求
+- **window.open 拦截** - 处理新窗口打开的链接
+
+#### 3. DOM 动态监听
+使用 MutationObserver 监听 DOM 变化，自动转换新插入元素的 URL，支持动态加载内容。
 
 ---
 
@@ -172,6 +185,7 @@ https://your-worker.workers.dev/https://github.com
 | `LOG_LEVEL` | string | `warn` | 日志级别：`error` / `warn` / `info` / `debug` |
 | `PROXY_PASSWORD` | Secret | - | 访问密码（仅通过 Cloudflare Dashboard 添加 Secret） |
 | `SHOW_PASSWORD_PAGE` | boolean | `true` | 是否显示密码输入页面，false则直接返回403 |
+| `BLOCKED_UA_PATTERNS` | string | - | 爬虫黑名单（逗号分隔），默认已包含 Bytespider/GPTBot/CCBot/SemrushBot/AhrefsBot |
 | `MAX_CACHE_SIZE` | number | `1048576` | 单个缓存项最大大小（字节，默认1MB） |
 
 ### 缓存 TTL 配置
@@ -185,6 +199,15 @@ https://your-worker.workers.dev/https://github.com
 | 字体 | 30 天 | `CACHE_FONT_TTL` | 字体文件 |
 | JSON | 30 分钟 | `CACHE_JSON_TTL` | API 响应 |
 | 默认 | 1 小时 | `CACHE_DEFAULT_TTL` | 其他内容 |
+
+### 性能配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `MAX_REDIRECT_DEPTH` | 5 | 最大重定向深度 |
+| `REQUEST_TIMEOUT` | 30000ms | 请求超时时间 |
+| `MAX_RESPONSE_SIZE` | 50MB | 最大响应体大小 |
+| `CONCURRENT_REQUESTS_LIMIT` | 10 | 并发请求限制 |
 
 ### wrangler.toml 示例
 
@@ -269,10 +292,39 @@ GET /api/status
 }
 ```
 
+### 缓存统计
+
+```http
+GET /api/cache/stats
+```
+
+**响应示例：**
+
+```json
+{
+  "totalKeys": 0,
+  "cachePrefix": "omnibox-proxy-cache-v1.0",
+  "ttlConfig": {
+    "HTML": 3600,
+    "CSS": 86400,
+    "JS": 86400,
+    "IMAGE": 2592000,
+    "FONT": 2592000,
+    "JSON": 1800,
+    "DEFAULT": 3600
+  },
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "hitCount": 0,
+  "missCount": 0,
+  "hitRate": "0.00%"
+}
+```
+
 ### 清除缓存
 
 ```http
 POST /api/cache/clear
+Authorization: Bearer <PROXY_PASSWORD>
 Content-Type: application/json
 
 {
@@ -289,10 +341,13 @@ Content-Type: application/json
 }
 ```
 
+> **注意**：写操作（POST）需要鉴权，使用 `PROXY_PASSWORD` 作为 Bearer Token
+
 ### 预热缓存
 
 ```http
 POST /api/cache/preload
+Authorization: Bearer <PROXY_PASSWORD>
 ```
 
 **响应示例：**
@@ -323,6 +378,11 @@ POST /api/cache/preload
 |-------------|------|
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API 令牌 |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
+
+**部署流程：**
+1. 代码检查（ESLint + TypeScript）
+2. 配置验证
+3. 自动部署到 Cloudflare Workers
 
 ### 手动部署
 
@@ -369,7 +429,6 @@ omnibox/
 │   ├── injector.ts             # 内容注入 - HTML处理、URL重写
 │   ├── templates.ts            # 页面模板 - 主页、密码页、错误页
 │   └── utils.ts                # 工具函数 - 日志、Cookie、响应构建
-JavaScript代码(参考)
 ├── eslint.config.js            # ESLint 配置 (v9 flat config)
 ├── .gitignore
 ├── package.json
@@ -418,10 +477,11 @@ LOG_LEVEL = "debug"
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
-| TypeScript | 5.9.3 | 类型系统 |
-| Wrangler | 4.60.0 | Cloudflare Workers CLI |
-| ESLint | 10.0.2 | 代码检查 |
-| @cloudflare/workers-types | 20260305.1 | Workers 类型定义 |
+| TypeScript | ^5.9.3 | 类型系统 |
+| Wrangler | ^4.60.0 | Cloudflare Workers CLI |
+| ESLint | ^10.0.2 | 代码检查 |
+| @cloudflare/workers-types | ^4.20260305.1 | Workers 类型定义 |
+| typescript-eslint | ^8.56.1 | TypeScript ESLint 插件 |
 
 ---
 
@@ -445,12 +505,22 @@ LOG_LEVEL = "debug"
 
 ### 安全特性
 
-- ✅ 爬虫过滤（阻止 Bytespider 等恶意爬虫）
+- ✅ 爬虫过滤（阻止 Bytespider、GPTBot、CCBot、SemrushBot、AhrefsBot 等恶意爬虫）
 - ✅ 密码常量时间比较（防止时序攻击）
 - ✅ 内容类型过滤
 - ✅ CORS 安全配置
 - ✅ 密码保护机制
 - ✅ robots.txt 禁止爬取
+- ✅ 敏感请求头移除（CSP、HSTS、X-Frame-Options 等）
+- ✅ API 写操作鉴权（Bearer Token）
+
+### Cookie 安全
+
+| Cookie 名称 | 用途 | 安全属性 |
+|-------------|------|----------|
+| `__OMNIBOX_PWD__` | 密码哈希存储 | HttpOnly, Secure, SameSite=Lax |
+| `__OMNIBOX_VISITEDsite__` | 最后访问站点 | HttpOnly, Secure |
+| `__OMNIBOX_HINT__` | 提示关闭标记 | Secure |
 
 ---
 
@@ -471,9 +541,10 @@ LOG_LEVEL = "debug"
 <details>
 <summary><b>Q: 如何清除缓存？</b></summary>
 
-方式一：调用 API
+方式一：调用 API（需要密码鉴权）
 ```bash
-curl -X POST https://your-worker.workers.dev/api/cache/clear
+curl -X POST https://your-worker.workers.dev/api/cache/clear \
+  -H "Authorization: Bearer YOUR_PASSWORD"
 ```
 
 方式二：Cloudflare Dashboard
@@ -501,6 +572,26 @@ curl -X POST https://your-worker.workers.dev/api/cache/clear
 1. 在 Cloudflare Dashboard → Workers → omnibox → Settings → Triggers
 2. 添加自定义域名
 3. 确保域名已托管在 Cloudflare
+</details>
+
+<details>
+<summary><b>Q: 缓存键是如何生成的？</b></summary>
+
+缓存键生成策略：
+- 前缀: `omnibox-proxy-cache-v1.0`
+- 组件: `前缀|方法|URL|accept-language`
+- 最终键: SHA-256 哈希（截断 48 字符）
+- 自动排除缓存破坏参数（_t, timestamp, cachebuster 等）
+</details>
+
+<details>
+<summary><b>Q: 如何添加自定义爬虫黑名单？</b></summary>
+
+在 `wrangler.toml` 中配置：
+```toml
+BLOCKED_UA_PATTERNS = "MyBot,AnotherBot"
+```
+这会追加到默认黑名单（Bytespider/GPTBot/CCBot/SemrushBot/AhrefsBot）之后。
 </details>
 
 ---
