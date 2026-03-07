@@ -65,8 +65,9 @@ export class ContentInjector {
 
   replaceURLsInText(content: string): string {
     try {
-      // 排除尾部标点符号（逗号、句号、括号、引号等），避免将非 URL 字符包含进改写结果
-      const urlRegex = /(https?:\/\/[^\s'"<>()[\]{}|\\^`]+?)(?=[\s'"<>()[\]{}|\\^`.,;:!?]|$)/g;
+      // 使用原始宽松正则匹配完整 URL（含路径、查询参数），再对结果做尾部标点清理
+      // 不能在字符集里加 . 否则会截断域名（example.com -> example）
+      const urlRegex = /(https?:\/\/[^\s'"]+)/g;
 
       return content.replaceAll(urlRegex, (match, p1, offset, string) => {
         const before = string.substring(Math.max(0, offset - 10), offset);
@@ -74,7 +75,20 @@ export class ContentInjector {
             before.includes('src=\'') || before.includes('href=\'')) {
           return match;
         }
-        return `${(globalThis as any).thisProxyServerUrlHttps}${match}`;
+        // 裁掉尾部独立标点（逗号、句号、分号等），但保留 URL 路径中合法的标点
+        // 括号：只有找不到配对的左括号时才裁掉尾部右括号
+        let url = match;
+        while (url.length > 0) {
+          const last = url[url.length - 1];
+          if (last === ',' || last === '.' || last === ';' || last === ':' || last === '!' || last === '?') {
+            url = url.slice(0, -1);
+          } else if (last === ')' && !url.includes('(')) {
+            url = url.slice(0, -1);
+          } else {
+            break;
+          }
+        }
+        return `${(globalThis as any).thisProxyServerUrlHttps}${url}`;
       });
     } catch (error) {
       console.error('URL replacement error:', error);

@@ -341,8 +341,12 @@ export class ProxyHandler {
 
       modifiedResponse = new Response(body, response);
 
-      if (contentType !== actualContentType && isHTML) {
+      if (isHTML) {
+        // 确保 HTML 响应有正确的 Content-Type，防止浏览器 MIME 嗅探出错
         modifiedResponse.headers.set('Content-Type', 'text/html; charset=utf-8');
+      } else if (!contentType && actualContentType && actualContentType !== 'text/plain') {
+        // contentType 为空时补全推断出的类型，避免浏览器 MIME 嗅探
+        modifiedResponse.headers.set('Content-Type', actualContentType);
       }
     } else {
       modifiedResponse = new Response(response.body, response);
@@ -360,9 +364,19 @@ export class ProxyHandler {
       return declaredContentType;
     }
 
+    // 已有明确的非 HTML content-type 时，直接沿用，不做任何升级
+    // 防止 CSS/JS/JSON 文件被误判为 text/html，导致浏览器 MIME 检查失败（ERR: not a supported stylesheet MIME type）
+    if (declaredContentType &&
+        declaredContentType !== 'application/octet-stream' &&
+        !declaredContentType.includes('application/x-typescript') &&
+        !declaredContentType.includes('application/typescript')) {
+      return declaredContentType;
+    }
+
     const trimmedBody = body.trim();
 
-    // 仅凭 HTML 结构特征升级为 text/html，不依赖 JS 关键字（避免内联 script 的 HTML 被误判为 JS）
+    // 只有在 contentType 完全未声明或为二进制/typescript 时，才凭结构特征做升级判断
+    // 必须同时满足 DOCTYPE/html 标签 + head + body，确保是真正的 HTML 文档
     if (trimmedBody.startsWith('<!DOCTYPE') ||
         trimmedBody.startsWith('<html') ||
         trimmedBody.startsWith('<HTML') ||
@@ -371,11 +385,9 @@ export class ProxyHandler {
     }
 
     // JS 类型升级：必须上游已声明为 octet-stream 或 typescript，不凭内容特征猜测
-    // 防止含内联 <script> 的 HTML 被误判为 JS，导致跳过 HTML 注入流程
     if (declaredContentType === 'application/octet-stream' ||
         declaredContentType.includes('application/x-typescript') ||
         declaredContentType.includes('application/typescript')) {
-      // 只有明确以 script 标签或典型 JS 模块语法开头才升级
       if (trimmedBody.startsWith('<script') || trimmedBody.startsWith('(function') ||
           trimmedBody.startsWith('!function') || trimmedBody.startsWith('define(') ||
           trimmedBody.startsWith('export ') || trimmedBody.startsWith('import ')) {

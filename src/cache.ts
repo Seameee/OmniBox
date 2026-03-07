@@ -31,6 +31,8 @@ export class CacheManager {
   private env: EnvVariables;
   private defaultTTL: CacheTTLConfig;
   private logger: Logger;
+  // hitCount/missCount 为请求级统计（CacheManager 每次请求重新实例化），
+  // 不跨请求累积，仅供本次请求内部参考。真实命中率需通过 Cloudflare Analytics 查看。
   private hitCount: number = 0;
   private missCount: number = 0;
 
