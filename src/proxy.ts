@@ -297,9 +297,59 @@ export class ProxyHandler {
     }
   }
 
+  /**
+   * 根据请求 URL 的文件后缀推断期望的 Content-Type。
+   * 用于修正「上游返回 4xx/5xx + text/html 错误页」但实际是 CSS/JS/字体等资源的情况，
+   * 避免浏览器因 MIME type mismatch 拒绝加载样式/脚本。
+   */
+  private getExpectedContentTypeFromUrl(urlPath: string): string | null {
+    const lower = urlPath.toLowerCase().split('?')[0];
+    const extMap: Record<string, string> = {
+      '.css':   'text/css',
+      '.js':    'application/javascript',
+      '.mjs':   'application/javascript',
+      '.cjs':   'application/javascript',
+      '.jsx':   'application/javascript',
+      '.tsx':   'application/javascript',
+      '.ts':    'application/javascript',
+      '.json':  'application/json',
+      '.xml':   'application/xml',
+      '.svg':   'image/svg+xml',
+      '.woff':  'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf':   'font/ttf',
+      '.otf':   'font/otf',
+      '.eot':   'application/vnd.ms-fontobject',
+    };
+    for (const [ext, ct] of Object.entries(extMap)) {
+      if (lower.endsWith(ext)) return ct;
+    }
+    return null;
+  }
+
   private async processResponse(response: Response, actualUrl: URL, siteCookie: string | null): Promise<Response> {
     const contentType = response.headers.get('Content-Type') || '';
     const hasProxyHintCookie = getCookie(CONFIG.PROXY_HINT_COOKIE_NAME, siteCookie) !== '';
+
+    // ── 错误响应的 Content-Type 修正 ──────────────────────────────────────────
+    // 场景：上游对 CSS/JS/字体等资源请求返回了 4xx/5xx + Content-Type: text/html 错误页。
+    // 例如：assets.jable.tv/app.css?15 → 403 + text/html（IP 被封）
+    // 此时浏览器发现 <link rel=stylesheet> 的响应 CT 是 text/html，会报 MIME 错误并拒绝加载。
+    // 修正策略：根据 URL 后缀推断应有的 CT，用空 body 替换错误页，保持正确的 MIME 类型。
+    // 这样浏览器不报 MIME 错误，仅静默失败（样式/脚本缺失），不影响页面其他内容正常加载。
+    if (response.status >= 400 && contentType.includes('text/html')) {
+      const expectedCt = this.getExpectedContentTypeFromUrl(actualUrl.pathname);
+      if (expectedCt && !expectedCt.includes('html')) {
+        const errorResponse = new Response('', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: { 'Content-Type': expectedCt }
+        });
+        this.removeRestrictiveHeaders(errorResponse, hasProxyHintCookie);
+        return errorResponse;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     let modifiedResponse: Response;
     let isHTML = false;
